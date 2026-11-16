@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Immune Breaker — Defensa Celular</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #090d16;
+            color: #ffffff;
+            font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        h1 {
+            font-size: 1.7rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, #00f0ff, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 15px rgba(0, 240, 255, 0.25);
+        }
+        .subtitle {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 500px;
+            max-width: 95vw;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+        .hud-box {
+            background: #131b2e;
+            border: 1px solid #26334d;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            flex: 1;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        #game-container {
+            position: relative;
+            border-radius: 14px;
+            overflow: hidden;
+            border: 2px solid #26334d;
+            box-shadow: 0 0 40px rgba(0, 240, 255, 0.12);
+        }
+        canvas {
+            display: block;
+            background: radial-gradient(circle at 50% 20%, #162038 0%, #090d16 100%);
+            cursor: pointer;
+        }
+        .legend {
+            display: flex;
+            gap: 14px;
+            margin-top: 12px;
+            font-size: 0.78rem;
+            color: #94a3b8;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: #131b2e;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid #1e293b;
+        }
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>IMMUNE BREAKER</h1>
+        <div class="subtitle">Primera Línea de Defensa: Macrófagos y Anticuerpos vs. Invasión Bacteriana</div>
+    </div>
+
+    <div class="hud">
+        <div class="hud-box" id="score-display">PUNTOS: 0</div>
+        <div class="hud-box" id="lives-display">VIDAS: ❤️❤️❤️</div>
+        <div class="hud-box" id="wave-display">OLEADA: 1 / 4</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="500" height="620"></canvas>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot" style="background:#10b981;"></span> ↔ Inflamación (Expande)</div>
+        <div class="legend-item"><span class="dot" style="background:#38bdf8;"></span> Y Lluvia de Anticuerpos</div>
+        <div class="legend-item"><span class="dot" style="background:#f59e0b;"></span> 💣 Neutrófilo Explosivo</div>
+        <div class="legend-item"><span class="dot" style="background:#a855f7;"></span> T Célula Auxiliar (+500 pts)</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const scoreEl = document.getElementById("score-display");
+        const livesEl = document.getElementById("lives-display");
+        const waveEl = document.getElementById("wave-display");
+
+        // --- SISTEMA DE SONIDO SINTÉTICO (WEB AUDIO API) ---
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                const now = audioCtx.currentTime;
+
+                if (type === 'paddle') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(260, now);
+                    osc.frequency.exponentialRampToValueAtTime(420, now + 0.08);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.08);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } else if (type === 'brick') {
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(480, now);
+                    osc.frequency.exponentialRampToValueAtTime(160, now + 0.09);
+                    gain.gain.setValueAtTime(0.16, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.09);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                } else if (type === 'explosion') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(140, now);
+                    osc.frequency.exponentialRampToValueAtTime(35, now + 0.25);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.25);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'powerup') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.setValueAtTime(554, now + 0.06);
+                    osc.frequency.setValueAtTime(659, now + 0.12);
+                    gain.gain.setValueAtTime(0.18, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.22);
+                    osc.start(now);
+                    osc.stop(now + 0.22);
+                } else if (type === 'damage') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(220, now);
+                    osc.frequency.linearRampToValueAtTime(75, now + 0.35);
+                    gain.gain.setValueAtTime(0.22, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                }
+            } catch (e) {}
+        }
+
+        // --- ESTADO DEL JUEGO ---
+        const MAX_WAVES = 4;
+        let score = 0;
+        let lives = 3;
+        let wave = 1;
+        let gameStarted = false;
+        let gameOver = false;
+        let gameWon = false;
+        let screenShake = 0;
+
+        // Partículas visuales
+        let particles = [];
+        // Células de fondo flotando (ambiente sanguíneo)
+        let bgCells = Array.from({ length: 18 }, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: 8 + Math.random() * 18,
+            speed: 0.2 + Math.random() * 0.4,
+            alpha: 0.03 + Math.random() * 0.05
+        }));
+
+        // Raqueta (Macrófago)
+        const paddle = {
+            baseW: 96,
+            w: 96,
+            h: 18,
+            x: canvas.width / 2 - 48,
+            y: canvas.height - 38,
+            speed: 8,
+            targetX: canvas.width / 2 - 48,
+            expandTimer: 0,
+            pulse: 0
+        };
+
+        // Pelotas (Anticuerpos)
+        let balls = [];
+        const BASE_BALL_SPEED = 5.2;
+
+        // Bloques (Bacterias)
+        const brickCols = 7;
+        const brickRows = 5;
+        const brickW = 58;
+        const brickH = 24;
+        const brickPad = 9;
+        const brickOffsetLeft = 20;
+        const brickOffsetTop = 45;
+        let bricks = [];
+
+        // Mecánica Space Invaders
+        let invasionOffset = 0;
+        let invasionSpeed = 0.06;
+        let enemyBullets = [];
+        let powerUps = [];
+        let lastShotTime = 0;
+
+        // --- CONTROLES ---
+        let rightPressed = false;
+        let leftPressed = false;
+        let usingMouse = false;
+
+        document.addEventListener("keydown", (e) => {
+            initAudio();
+            if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") {
+                rightPressed = true;
+                usingMouse = false;
+            }
+            if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") {
+                leftPressed = true;
+                usingMouse = false;
+            }
+            if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                if (gameOver || gameWon) {
+                    resetGame();
+                } else if (!gameStarted) {
+                    launchBall();
+                }
+            }
+            if ((e.key === "r" || e.key === "R") && (gameOver || gameWon)) {
+                resetGame();
+            }
+        });
+
+        document.addEventListener("keyup", (e) => {
+            if (e.key === "Right" || e.key === "ArrowRight" || e.key === "d" || e.key === "D") rightPressed = false;
+            if (e.key === "Left" || e.key === "ArrowLeft" || e.key === "a" || e.key === "A") leftPressed = false;
+        });
+
+        canvas.addEventListener("mousemove", (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            paddle.targetX = mouseX - paddle.w / 2;
+            usingMouse = true;
+        });
+
+        canvas.addEventListener("click", () => {
+            initAudio();
+            if (gameOver || gameWon) {
+                resetGame();
+            } else if (!gameStarted) {
+                launchBall();
+            }
+        });
+
+        canvas.addEventListener("touchmove", (e) => {
+            e.preventDefault();
+            initAudio();
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const touchX = (e.touches[0].clientX - rect.left) * scaleX;
+            paddle.targetX = touchX - paddle.w / 2;
+            usingMouse = true;
+        }, { passive: false });
+
+        canvas.addEventListener("touchstart", (e) => {
+            initAudio();
+            if (gameOver || gameWon) {
+                resetGame();
+            } else if (!gameStarted) {
+                launchBall();
+            }
+        });
+
+        // --- INICIALIZACIÓN ---
+        function createParticles(x, y, color, count = 12) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const spd = 1 + Math.random() * 3.5;
+                particles.push({
+                    x,
+                    y,
+                    dx: Math.cos(angle) * spd,
+                    dy: Math.sin(angle) * spd,
+                    r: 2 + Math.random() * 3.5,
+                    color,
+                    life: 1.0,
+                    decay: 0.025 + Math.random() * 0.02
+                });
+            }
+        }
+
+        function initBricks() {
+            bricks = [];
+            for (let c = 0; c < brickCols; c++) {
+                bricks[c] = [];
+                for (let r = 0; r < brickRows; r++) {
+                    let type = 'normal';
+                    let hp = 1;
+                    let color = '#ec4899'; // Bacteria común
+
+                    if (r === 0) {
+                        type = 'super';
+                        hp = wave >= 2 ? 3 : 2;
+                        color = '#8b5cf6'; // Super-bacteria acorazada
+                    } else if (r === 1) {
+                        type = 'shooter';
+                        hp = 1;
+                        color = '#f43f5e'; // Bacteria tóxica que dispara
+                    } else if (r === 2 && (c % 2 === 1)) {
+                        type = 'carrier';
+                        hp = 1;
+                        color = '#06b6d4'; // Porta refuerzos inmunitarios
+                    }
+
+                    bricks[c][r] = {
+                        status: 1,
+                        type,
+                        hp,
+                        maxHp: hp,
+                        color,
+                        wobble: Math.random() * Math.PI * 2
+                    };
+                }
+            }
+            invasionOffset = 0;
+        }
+
+        function resetBall() {
+            balls = [{
+                x: paddle.x + paddle.w / 2,
+                y: paddle.y - 10,
+                r: 7,
+                dx: 0,
+                dy: 0,
+                speed: BASE_BALL_SPEED + (wave - 1) * 0.35,
+                explosive: false
+            }];
+            gameStarted = false;
+        }
+
+        function launchBall() {
+            if (balls.length === 0) resetBall();
+            const angle = (Math.random() * 0.5 - 0.25); // Ligero ángulo aleatorio hacia arriba
+            balls[0].dx = balls[0].speed * Math.sin(angle);
+            balls[0].dy = -balls[0].speed * Math.cos(angle);
+            gameStarted = true;
+            playSound('paddle');
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            wave = 1;
+            gameOver = false;
+            gameWon = false;
+            paddle.w = paddle.baseW;
+            paddle.expandTimer = 0;
+            invasionSpeed = 0.06;
+            enemyBullets = [];
+            powerUps = [];
+            particles = [];
+            initBricks();
+            resetBall();
+        }
+
+        function spawnPowerUp(x, y) {
+            const types = ['expand', 'multiball', 'neutrophil', 'helperT'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            powerUps.push({
+                x: x - 13,
+                y,
+                w: 26,
+                h: 26,
+                dy: 2.3,
+                type
+            });
+        }
+
+        function triggerNeutrophilExplosion(centerX, centerY) {
+            playSound('explosion');
+            screenShake = 8;
+            createParticles(centerX, centerY, '#f59e0b', 28);
+
+            const blastRadius = 95;
+            for (let c = 0; c < brickCols; c++) {
+                for (let r = 0; r < brickRows; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        const bx = brickOffsetLeft + c * (brickW + brickPad) + brickW / 2;
+                        const by = brickOffsetTop + invasionOffset + r * (brickH + brickPad) + brickH / 2;
+                        const dist = Math.hypot(bx - centerX, by - centerY);
+                        if (dist <= blastRadius) {
+                            b.status = 0;
+                            score += 75;
+                            createParticles(bx, by, b.color, 8);
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- ACTUALIZACIÓN LÓGICA ---
+        function update(timestamp) {
+            // Animación fondo
+            bgCells.forEach(cell => {
+                cell.y += cell.speed;
+                if (cell.y - cell.r > canvas.height) {
+                    cell.y = -cell.r;
+                    cell.x = Math.random() * canvas.width;
+                }
+            });
+
+            if (screenShake > 0) screenShake *= 0.85;
+            if (screenShake < 0.2) screenShake = 0;
+
+            paddle.pulse += 0.08;
+
+            // Actualizar partículas
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life -= p.decay;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            if (gameOver || gameWon) {
+                updateHUD();
+                return;
+            }
+
+            // Movimiento de raqueta
+            if (rightPressed) {
+                paddle.x += paddle.speed;
+            } else if (leftPressed) {
+                paddle.x -= paddle.speed;
+            } else if (usingMouse) {
+                paddle.x += (paddle.targetX - paddle.x) * 0.28;
+            }
+
+            // Límites de raqueta
+            if (paddle.x < 4) paddle.x = 4;
+            if (paddle.x + paddle.w > canvas.width - 4) paddle.x = canvas.width - 4 - paddle.w;
+
+            // Temporizador expansión (Inflamación)
+            if (paddle.expandTimer > 0) {
+                paddle.expandTimer--;
+                if (paddle.expandTimer === 0) {
+                    paddle.w = paddle.baseW;
+                }
+            }
+
+            // Si no ha lanzado, la pelota sigue al macrófago
+            if (!gameStarted) {
+                if (balls.length > 0) {
+                    balls[0].x = paddle.x + paddle.w / 2;
+                    balls[0].y = paddle.y - balls[0].r - 2;
+                }
+                updateHUD();
+                return;
+            }
+
+            // Descenso de invasión (Space Invaders)
+            invasionOffset += invasionSpeed;
+
+            // Disparo periódico de bacterias tóxicas
+            if (timestamp - lastShotTime > Math.max(950, 1900 - wave * 220)) {
+                lastShotTime = timestamp;
+                const shooters = [];
+                for (let c = 0; c < brickCols; c++) {
+                    for (let r = 0; r < brickRows; r++) {
+                        if (bricks[c][r].status === 1 && (bricks[c][r].type === 'shooter' || Math.random() < 0.25)) {
+                            shooters.push({ c, r });
+                        }
+                    }
+                }
+                if (shooters.length > 0) {
+                    const chosen = shooters[Math.floor(Math.random() * shooters.length)];
+                    const bx = brickOffsetLeft + chosen.c * (brickW + brickPad) + brickW / 2;
+                    const by = brickOffsetTop + invasionOffset + chosen.r * (brickH + brickPad) + brickH;
+                    enemyBullets.push({
+                        x: bx,
+                        y: by,
+                        r: 5,
+                        dy: 3.2 + wave * 0.35
+                    });
+                }
+            }
+
+            // Actualizar pelotas
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const b = balls[i];
+                b.x += b.dx;
+                b.y += b.dy;
+
+                // Rebote paredes laterales
+                if (b.x - b.r <= 0) {
+                    b.x = b.r;
+                    b.dx = Math.abs(b.dx);
+                    playSound('paddle');
+                } else if (b.x + b.r >= canvas.width) {
+                    b.x = canvas.width - b.r;
+                    b.dx = -Math.abs(b.dx);
+                    playSound('paddle');
+                }
+
+                // Rebote techo
+                if (b.y - b.r <= 0) {
+                    b.y = b.r;
+                    b.dy = Math.abs(b.dy);
+                    playSound('paddle');
+                }
+
+                // Rebote con raqueta (Macrófago)
+                if (
+                    b.dy > 0 &&
+                    b.y + b.r >= paddle.y &&
+                    b.y - b.r <= paddle.y + paddle.h &&
+                    b.x + b.r >= paddle.x &&
+                    b.x - b.r <= paddle.x + paddle.w
+                ) {
+                    const hitOffset = (b.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+                    const clampedOffset = Math.max(-0.9, Math.min(0.9, hitOffset));
+                    const bounceAngle = clampedOffset * (Math.PI / 3); // Máx 60°
+                    b.dx = b.speed * Math.sin(bounceAngle);
+                    b.dy = -b.speed * Math.cos(bounceAngle);
+                    b.y = paddle.y - b.r - 1;
+                    playSound('paddle');
+                    createParticles(b.x, paddle.y, '#10b981', 5);
+                }
+
+                // Pelota perdida abajo
+                if (b.y - b.r > canvas.height) {
+                    balls.splice(i, 1);
+                }
+            }
+
+            // Verificar si se perdieron todas las pelotas
+            if (balls.length === 0) {
+                lives--;
+                screenShake = 6;
+                playSound('damage');
+                if (lives <= 0) {
+                    lives = 0;
+                    gameOver = true;
+                } else {
+                    paddle.w = paddle.baseW;
+                    paddle.expandTimer = 0;
+                    resetBall();
+                }
+            }
+
+            // Actualizar toxinas enemigas
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const eb = enemyBullets[i];
+                eb.y += eb.dy;
+
+                if (
+                    eb.y + eb.r >= paddle.y &&
+                    eb.y - eb.r <= paddle.y + paddle.h &&
+                    eb.x + eb.r >= paddle.x &&
+                    eb.x - eb.r <= paddle.x + paddle.w
+                ) {
+                    enemyBullets.splice(i, 1);
+                    lives--;
+                    screenShake = 7;
+                    playSound('damage');
+                    createParticles(eb.x, paddle.y, '#f43f5e', 14);
+                    if (lives <= 0) {
+                        lives = 0;
+                        gameOver = true;
+                    }
+                    continue;
+                }
+
+                if (eb.y - eb.r > canvas.height) {
+                    enemyBullets.splice(i, 1);
+                }
+            }
+
+            // Actualizar Power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const p = powerUps[i];
+                p.y += p.dy;
+
+                if (
+                    p.y + p.h >= paddle.y &&
+                    p.y <= paddle.y + paddle.h &&
+                    p.x + p.w >= paddle.x &&
+                    p.x <= paddle.x + paddle.w
+                ) {
+                    playSound('powerup');
+                    createParticles(p.x + p.w / 2, paddle.y, '#38bdf8', 12);
+
+                    if (p.type === 'expand') {
+                        paddle.w = 142;
+                        paddle.expandTimer = 540; // ~9 segundos
+                    } else if (p.type === 'multiball' && balls.length > 0) {
+                        const ref = balls[0];
+                        balls.push(
+                            { x: ref.x, y: ref.y, r: 7, dx: -ref.speed * 0.5, dy: -ref.speed * 0.86, speed: ref.speed, explosive: ref.explosive },
+                            { x: ref.x, y: ref.y, r: 7, dx: ref.speed * 0.5, dy: -ref.speed * 0.86, speed: ref.speed, explosive: ref.explosive }
+                        );
+                    } else if (p.type === 'neutrophil') {
+                        balls.forEach(ball => ball.explosive = true);
+                    } else if (p.type === 'helperT') {
+                        score += 500;
+                    }
+
+                    powerUps.splice(i, 1);
+                    continue;
+                }
+
+                if (p.y > canvas.height) {
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // Colisiones Pelota - Bloques y verificación de invasión
+            let remainingBricks = 0;
+            for (let c = 0; c < brickCols; c++) {
+                for (let r = 0; r < brickRows; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        remainingBricks++;
+                        b.wobble += 0.06;
+                        const bx = brickOffsetLeft + c * (brickW + brickPad);
+                        const by = brickOffsetTop + invasionOffset + r * (brickH + brickPad);
+
+                        // Verificar si las bacterias alcanzaron al macrófago
+                        if (by + brickH >= paddle.y) {
+                            lives = 0;
+                            gameOver = true;
+                            playSound('damage');
+                            return;
+                        }
+
+                        // Colisión con cada pelota
+                        for (let k = 0; k < balls.length; k++) {
+                            const ball = balls[k];
+                            if (
+                                ball.x + ball.r > bx &&
+                                ball.x - ball.r < bx + brickW &&
+                                ball.y + ball.r > by &&
+                                ball.y - ball.r < by + brickH
+                            ) {
+                                // Determinar lado del impacto para rebote preciso
+                                const overlapLeft = (ball.x + ball.r) - bx;
+                                const overlapRight = (bx + brickW) - (ball.x - ball.r);
+                                const overlapTop = (ball.y + ball.r) - by;
+                                const overlapBottom = (by + brickH) - (ball.y - ball.r);
+                                const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+
+                                if (minOverlap === overlapLeft || minOverlap === overlapRight) {
+                                    ball.dx = -ball.dx;
+                                } else {
+                                    ball.dy = -ball.dy;
+                                }
+
+                                if (ball.explosive) {
+                                    ball.explosive = false;
+                                    triggerNeutrophilExplosion(bx + brickW / 2, by + brickH / 2);
+                                } else {
+                                    b.hp--;
+                                    playSound('brick');
+                                    createParticles(ball.x, ball.y, b.color, 7);
+
+                                    if (b.hp <= 0) {
+                                        b.status = 0;
+                                        remainingBricks--;
+                                        score += (brickRows - r) * 30 + 50;
+
+                                        if (b.type === 'carrier' || Math.random() < 0.28) {
+                                            spawnPowerUp(bx + brickW / 2, by + brickH / 2);
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Avance de oleada
+            if (remainingBricks === 0) {
+                if (wave >= MAX_WAVES) {
+                    gameWon = true;
+                    playSound('powerup');
+                } else {
+                    wave++;
+                    invasionSpeed += 0.025;
+                    enemyBullets = [];
+                    powerUps = [];
+                    initBricks();
+                    resetBall();
+                    playSound('powerup');
+                }
+            }
+
+            updateHUD();
+        }
+
+        function updateHUD() {
+            scoreEl.innerText = `PUNTOS: ${score}`;
+            livesEl.innerText = `VIDAS: ${lives > 0 ? "❤️".repeat(lives) : "💀"}`;
+            waveEl.innerText = `OLEADA: ${wave} / ${MAX_WAVES}`;
+        }
+
+        // --- RENDERIZADO ESTILO KURZGESAGT ---
+        function draw() {
+            ctx.save();
+            if (screenShake > 0) {
+                const sx = (Math.random() - 0.5) * screenShake;
+                const sy = (Math.random() - 0.5) * screenShake;
+                ctx.translate(sx, sy);
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Células flotantes de fondo
+            bgCells.forEach(cell => {
+                ctx.fillStyle = `rgba(56, 189, 248, ${cell.alpha})`;
+                ctx.beginPath();
+                ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Línea de peligro (tejido sano)
+            ctx.strokeStyle = "rgba(244, 63, 94, 0.25)";
+            ctx.setLineDash([6, 6]);
+            ctx.beginPath();
+            ctx.moveTo(0, paddle.y - 4);
+            ctx.lineTo(canvas.width, paddle.y - 4);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Dibujar Bloques (Bacterias)
+            for (let c = 0; c < brickCols; c++) {
+                for (let r = 0; r < brickRows; r++) {
+                    const b = bricks[c][r];
+                    if (b.status === 1) {
+                        const bx = brickOffsetLeft + c * (brickW + brickPad);
+                        const by = brickOffsetTop + invasionOffset + r * (brickH + brickPad) + Math.sin(b.wobble) * 1.2;
+
+                        // Cuerpo de la bacteria
+                        ctx.fillStyle = b.color;
+                        ctx.beginPath();
+                        ctx.roundRect(bx, by, brickW, brickH, 10);
+                        ctx.fill();
+
+                        // Borde brillante superior
+                        ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
+                        ctx.beginPath();
+                        ctx.roundRect(bx + 4, by + 3, brickW - 8, 6, 4);
+                        ctx.fill();
+
+                        // Núcleo / Ojos estilo Kurzgesagt
+                        ctx.fillStyle = "#0f172a";
+                        ctx.beginPath();
+                        ctx.arc(bx + 15, by + brickH / 2 + 1, 3, 0, Math.PI * 2);
+                        ctx.arc(bx + brickW - 15, by + brickH / 2 + 1, 3, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Indicador de armadura para Super-bacterias
+                        if (b.maxHp > 1) {
+                            ctx.fillStyle = "#ffffff";
+                            ctx.font = "bold 11px sans-serif";
+                            ctx.textAlign = "center";
+                            ctx.fillText(b.hp, bx + brickW / 2, by + brickH / 2 + 4);
+                            ctx.textAlign = "left";
+                        }
+                    }
+                }
+            }
+
+            // Dibujar Raqueta (Macrófago)
+            const grad = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.h);
+            grad.addColorStop(0, "#34d399");
+            grad.addColorStop(1, "#059669");
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 10);
+            ctx.fill();
+
+            // Núcleo orgánico interno del Macrófago
+            ctx.fillStyle = "#064e3b";
+            ctx.beginPath();
+            ctx.ellipse(
+                paddle.x + paddle.w / 2,
+                paddle.y + paddle.h / 2,
+                12 + Math.sin(paddle.pulse) * 1.5,
+                5,
+                0,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+            // Dibujar Pelotas (Anticuerpos)
+            balls.forEach(b => {
+                ctx.save();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = b.explosive ? "#f59e0b" : "#38bdf8";
+                ctx.fillStyle = b.explosive ? "#fbbf24" : "#38bdf8";
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Dibujar Toxinas Enemigas
+            enemyBullets.forEach(eb => {
+                ctx.fillStyle = "#fb7185";
+                ctx.beginPath();
+                ctx.arc(eb.x, eb.y, eb.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#ffe4e6";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            });
+
+            // Dibujar Power-ups
+            powerUps.forEach(p => {
+                let bg = "#10b981";
+                let label = "↔";
+                if (p.type === 'multiball') { bg = "#38bdf8"; label = "Y"; }
+                else if (p.type === 'neutrophil') { bg = "#f59e0b"; label = "💣"; }
+                else if (p.type === 'helperT') { bg = "#a855f7"; label = "T"; }
+
+                ctx.fillStyle = bg;
+                ctx.beginPath();
+                ctx.roundRect(p.x, p.y, p.w, p.h, 7);
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(label, p.x + p.w / 2, p.y + 18);
+                ctx.textAlign = "left";
+            });
+
+            // Dibujar Partículas
+            particles.forEach(p => {
+                ctx.globalAlpha = Math.max(0, p.life);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Pantallas superpuestas
+            if (!gameStarted && !gameOver && !gameWon) {
+                drawOverlay(
+                    wave === 1 ? "¡HERIDA DETECTADA!" : `¡OLEADA ${wave} LISTA!`,
+                    "Mueve el Macrófago con el ratón o flechas ← →",
+                    "Haz CLIC o presiona ESPACIO para lanzar el anticuerpo",
+                    "#00f0ff"
+                );
+            } else if (gameOver) {
+                drawOverlay(
+                    "¡INFECCIÓN CRÍTICA!",
+                    `Puntuación alcanzada: ${score}`,
+                    "Haz CLIC o presiona 'R' para reiniciar la defensa",
+                    "#f43f5e"
+                );
+            } else if (gameWon) {
+                drawOverlay(
+                    "¡INMUNIDAD ADQUIRIDA!",
+                    `Has eliminado todos los patógenos (${score} pts)`,
+                    "Haz CLIC o presiona 'R' para jugar de nuevo",
+                    "#10b981"
+                );
+            }
+
+            ctx.restore();
+        }
+
+        function drawOverlay(title, line1, line2, titleColor) {
+            ctx.fillStyle = "rgba(9, 13, 22, 0.82)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.textAlign = "center";
+            ctx.fillStyle = titleColor;
+            ctx.font = "800 24px sans-serif";
+            ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 25);
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.font = "14px sans-serif";
+            ctx.fillText(line1, canvas.width / 2, canvas.height / 2 + 10);
+
+            ctx.fillStyle = "#38bdf8";
+            ctx.font = "bold 14px sans-serif";
+            ctx.fillText(line2, canvas.width / 2, canvas.height / 2 + 42);
+            ctx.textAlign = "left";
+        }
+
+        // --- BUCLE PRINCIPAL ---
+        function loop(timestamp) {
+            update(timestamp);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        initBricks();
+        resetBall();
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
